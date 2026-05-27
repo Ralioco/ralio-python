@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a problem with the Ralio Python SDK
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. **Do not include private keys, access
+        tokens, or registration tickets** in this issue. For security
+        vulnerabilities, see [SECURITY.md](../../SECURITY.md) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including the full traceback if any.
+      placeholder: When I call client.chat.send(...), I get ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal code snippet that triggers the issue (redact secrets).
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      placeholder: "0.1.0  (python -c 'import ralio; print(ralio.__version__)')"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: OS, networking setup (proxies), or other context.
+    validations:
+      required: false

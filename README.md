@@ -1,5 +1,11 @@
 # Ralio Python SDK
 
+[![PyPI version](https://img.shields.io/pypi/v/ralio.svg)](https://pypi.org/project/ralio/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ralio.svg)](https://pypi.org/project/ralio/)
+[![CI](https://github.com/Ralioco/ralio-python/actions/workflows/ci.yml/badge.svg)](https://github.com/Ralioco/ralio-python/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 The official Python client for the [Ralio](https://ralio.co) agentic payment API.
 
 It handles the machine-authentication path end to end — OAuth 2.1

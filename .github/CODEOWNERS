@@ -1,0 +1,8 @@
+# Default owners for everything in the repo.
+* @lgrosales
+
+# Security-sensitive crypto and auth lifecycle get explicit ownership.
+/src/ralio/_crypto.py @lgrosales
+/src/ralio/auth.py @lgrosales
+/src/ralio/transport.py @lgrosales
+/src/ralio/registration.py @lgrosales
