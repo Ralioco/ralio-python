@@ -63,6 +63,13 @@ print(binding.client_id)   # cb_... — store this alongside the key
 `register()` blocks until the owner approves (or the binding is rejected /
 expires / times out). The private key never leaves the host.
 
+> **Where does the agent ID come from?** `register()` returns a binding with
+> `client_id` and `scopes` — the credential handle, **not** an agent ID. The
+> agent you address in `chat.send(agent_id=...)` is the one the owner pinned the
+> ticket to when minting it (chosen in the console; shown on the agent's
+> settings page). Registration never echoes it back, so take `agent_id` from
+> your own configuration — don't expect it on the `register()` result.
+
 ## Use the client
 
 ```python
