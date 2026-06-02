@@ -63,13 +63,6 @@ print(binding.client_id)   # cb_... — store this alongside the key
 `register()` blocks until the owner approves (or the binding is rejected /
 expires / times out). The private key never leaves the host.
 
-> **Where does the agent ID come from?** `register()` returns a binding with
-> `client_id` and `scopes` — the credential handle, **not** an agent ID. The
-> agent you address in `chat.send(agent_id=...)` is the one the owner pinned the
-> ticket to when minting it (chosen in the console; shown on the agent's
-> settings page). Registration never echoes it back, so take `agent_id` from
-> your own configuration — don't expect it on the `register()` result.
-
 ## Use the client
 
 ```python
@@ -80,12 +73,13 @@ client = ralio.RalioClient(
     private_key_path="ralio-key.pem",
 )
 
-# Synchronous chat
-reply = client.chat.send(agent_id="d4e5...", message="What is my current balance?")
+# Synchronous chat — agent_id is resolved automatically for a single-agent
+# credential; pass agent_id explicitly to target one of several agents.
+reply = client.chat.send(message="What is my current balance?")
 print(reply.reply)
 
 # Streaming chat (server-sent events)
-for event in client.chat.stream(agent_id="d4e5...", message="List my recent payments"):
+for event in client.chat.stream(message="List my recent payments"):
     if event.event == "text_delta":
         print(event.text, end="", flush=True)
     elif event.event == "tool_started":

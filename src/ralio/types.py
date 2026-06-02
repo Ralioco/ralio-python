@@ -20,6 +20,27 @@ class CredentialBinding:
 
 
 @dataclass(frozen=True)
+class Agent:
+    """A payment agent the caller can address."""
+
+    id: str
+    name: str
+    agent_number: int | None = None
+    banking_provider: str | None = None
+    created_at: str | None = None
+
+    @classmethod
+    def _from_api(cls, data: dict[str, Any]) -> Agent:
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            agent_number=data.get("agent_number"),
+            banking_provider=data.get("banking_provider"),
+            created_at=data.get("created_at"),
+        )
+
+
+@dataclass(frozen=True)
 class Message:
     id: str
     role: str

@@ -10,7 +10,7 @@ import httpx
 from . import _crypto
 from .auth import TokenManager
 from .registration import DEFAULT_BASE_URL
-from .resources import ChatResource, TransactionsResource
+from .resources import AgentsResource, ChatResource, TransactionsResource
 from .transport import Transport
 
 
@@ -62,7 +62,8 @@ class RalioClient:
             public_jwk=public_jwk,
         )
 
-        self.chat = ChatResource(transport)
+        self.agents = AgentsResource(transport)
+        self.chat = ChatResource(transport, self.agents)
         self.transactions = TransactionsResource(transport)
 
     def close(self) -> None:
