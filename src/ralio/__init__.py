@@ -18,6 +18,7 @@ from .errors import (
 )
 from .registration import register
 from .types import (
+    Agent,
     ChatReply,
     ChatStreamEvent,
     CredentialBinding,
@@ -34,6 +35,7 @@ except PackageNotFoundError:  # running from a source tree without an install
 __all__ = [
     "RalioClient",
     "register",
+    "Agent",
     "ChatReply",
     "ChatStreamEvent",
     "CredentialBinding",

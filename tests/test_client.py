@@ -1,9 +1,11 @@
+import json
+
 import httpx
 import jwt as pyjwt
 import pytest
 import respx
 
-from ralio.errors import RalioPermissionError, RalioValidationError
+from ralio.errors import RalioConfigError, RalioPermissionError, RalioValidationError
 
 BASE_URL = "https://api.ralio.co"
 
@@ -145,3 +147,87 @@ def test_validation_error(client, token_response):
     )
     with pytest.raises(RalioValidationError):
         client.transactions.list(limit=-1)
+
+
+@respx.mock
+def test_agents_list_parses_the_bound_agent(client, token_response):
+    respx.post(f"{BASE_URL}/oauth/token").mock(
+        return_value=httpx.Response(200, json=token_response)
+    )
+    respx.get(f"{BASE_URL}/api/agents").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "a1",
+                    "name": "Payments",
+                    "agent_number": 1,
+                    "banking_provider": "griffin",
+                    "created_at": "t",
+                }
+            ],
+        )
+    )
+
+    agents = client.agents.list()
+
+    assert len(agents) == 1
+    assert agents[0].id == "a1"
+    assert agents[0].name == "Payments"
+    assert agents[0].agent_number == 1
+    assert agents[0].banking_provider == "griffin"
+
+
+@respx.mock
+def test_chat_send_resolves_bound_agent_when_agent_id_omitted(client, token_response):
+    respx.post(f"{BASE_URL}/oauth/token").mock(
+        return_value=httpx.Response(200, json=token_response)
+    )
+    respx.get(f"{BASE_URL}/api/agents").mock(
+        return_value=httpx.Response(200, json=[{"id": "bound-agent", "name": "Only"}])
+    )
+    route = respx.post(f"{BASE_URL}/api/chat").mock(
+        return_value=httpx.Response(
+            200, json={"reply": "ok", "conversation_id": "c1", "new_messages": []}
+        )
+    )
+
+    reply = client.chat.send(message="hi")
+
+    assert reply.reply == "ok"
+    assert json.loads(route.calls.last.request.content)["agent_id"] == "bound-agent"
+
+
+@respx.mock
+def test_chat_send_caches_resolved_agent(client, token_response):
+    respx.post(f"{BASE_URL}/oauth/token").mock(
+        return_value=httpx.Response(200, json=token_response)
+    )
+    agents_route = respx.get(f"{BASE_URL}/api/agents").mock(
+        return_value=httpx.Response(200, json=[{"id": "bound-agent", "name": "Only"}])
+    )
+    respx.post(f"{BASE_URL}/api/chat").mock(
+        return_value=httpx.Response(
+            200, json={"reply": "ok", "conversation_id": "c1", "new_messages": []}
+        )
+    )
+
+    client.chat.send(message="one")
+    client.chat.send(message="two")
+
+    assert agents_route.call_count == 1
+
+
+@respx.mock
+def test_chat_send_raises_when_multiple_agents(client, token_response):
+    respx.post(f"{BASE_URL}/oauth/token").mock(
+        return_value=httpx.Response(200, json=token_response)
+    )
+    respx.get(f"{BASE_URL}/api/agents").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": "a1", "name": "One"}, {"id": "a2", "name": "Two"}]
+        )
+    )
+
+    with pytest.raises(RalioConfigError):
+        client.chat.send(message="hi")
