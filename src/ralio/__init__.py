@@ -23,6 +23,9 @@ from .types import (
     ChatStreamEvent,
     CredentialBinding,
     Message,
+    Page,
+    PaymentInstruction,
+    PaymentIntent,
     Transaction,
 )
 
@@ -40,6 +43,9 @@ __all__ = [
     "ChatStreamEvent",
     "CredentialBinding",
     "Message",
+    "Page",
+    "PaymentIntent",
+    "PaymentInstruction",
     "Transaction",
     "RalioError",
     "RalioConfigError",

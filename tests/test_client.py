@@ -75,25 +75,39 @@ def test_transactions_list_parses_and_passes_params(client, token_response):
     route = respx.get(f"{BASE_URL}/api/transactions").mock(
         return_value=httpx.Response(
             200,
-            json=[
-                {
-                    "id": "txn_1",
-                    "amount": "500.00",
-                    "currency": "GBP",
-                    "status": "submitted",
-                    "creditor": "Bob",
-                    "date": "2026-04-04T10:05:00Z",
-                }
-            ],
+            json={
+                "transactions": [
+                    {
+                        "id": "txn_1",
+                        "amount": "500.00",
+                        "currency": "GBP",
+                        "status": "submitted",
+                        "creditor": "Bob",
+                        "date": "2026-04-04T10:05:00Z",
+                    }
+                ],
+                "total": 42,
+                "page": 1,
+                "per_page": 10,
+            },
         )
     )
 
-    txns = client.transactions.list(agent_id="a1", limit=10)
+    txns = client.transactions.list(agent_id="a1", page=1, per_page=10)
 
+    assert txns.total == 42
+    assert txns.page == 1
+    assert txns.per_page == 10
     assert len(txns) == 1
-    assert txns[0].id == "txn_1"
-    assert txns[0].amount == "500.00"
-    assert dict(route.calls.last.request.url.params) == {"limit": "10", "agent_id": "a1"}
+    assert txns.data[0].id == "txn_1"
+    assert txns.data[0].amount == "500.00"
+    # A Page is iterable for convenience.
+    assert [t.id for t in txns] == ["txn_1"]
+    assert dict(route.calls.last.request.url.params) == {
+        "page": "1",
+        "per_page": "10",
+        "agent_id": "a1",
+    }
 
 
 @respx.mock
@@ -146,7 +160,7 @@ def test_validation_error(client, token_response):
         return_value=httpx.Response(422, json={"detail": "bad limit"})
     )
     with pytest.raises(RalioValidationError):
-        client.transactions.list(limit=-1)
+        client.transactions.list(per_page=-1)
 
 
 @respx.mock
@@ -231,3 +245,72 @@ def test_chat_send_raises_when_multiple_agents(client, token_response):
 
     with pytest.raises(RalioConfigError):
         client.chat.send(message="hi")
+
+
+@respx.mock
+def test_payment_intents_list_parses_and_passes_params(client, token_response):
+    respx.post(f"{BASE_URL}/oauth/token").mock(
+        return_value=httpx.Response(200, json=token_response)
+    )
+    route = respx.get(f"{BASE_URL}/api/payment-intents").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "payment_intents": [
+                    {
+                        "id": "pi_1",
+                        "agent_id": "a1",
+                        "agent_name": "Payments",
+                        "approval_status": "approved_by_user",
+                        "execution_status": "completed",
+                        "total_amount": "75.00",
+                        "currency": "GBP",
+                        "instruction_count": 2,
+                        "instructions": [
+                            {
+                                "amount": "30.00",
+                                "currency": "GBP",
+                                "status": "completed",
+                                "creditor_name": "Acme",
+                                "transaction_id": "txn_1",
+                                "transaction_status": "delivered",
+                            },
+                            {
+                                "amount": "45.00",
+                                "currency": "GBP",
+                                "status": "failed",
+                                "creditor_name": "Beta",
+                                "execution_error": "insufficient funds",
+                            },
+                        ],
+                    }
+                ],
+                "total": 3,
+                "page": 2,
+                "per_page": 1,
+            },
+        )
+    )
+
+    intents = client.payment_intents.list(agent_id="a1", page=2, per_page=1)
+
+    assert intents.total == 3
+    assert intents.page == 2
+    assert intents.per_page == 1
+    assert len(intents) == 1
+    pi = intents.data[0]
+    assert pi.id == "pi_1"
+    assert pi.approval_status == "approved_by_user"
+    assert pi.execution_status == "completed"
+    assert pi.total_amount == "75.00"
+    assert pi.instruction_count == 2
+    assert len(pi.instructions) == 2
+    assert pi.instructions[0].creditor_name == "Acme"
+    assert pi.instructions[0].transaction_status == "delivered"
+    assert pi.instructions[1].status == "failed"
+    assert pi.instructions[1].execution_error == "insufficient funds"
+    assert dict(route.calls.last.request.url.params) == {
+        "page": "2",
+        "per_page": "1",
+        "agent_id": "a1",
+    }

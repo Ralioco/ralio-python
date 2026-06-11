@@ -85,9 +85,15 @@ for event in client.chat.stream(message="List my recent payments"):
     elif event.event == "tool_started":
         print(f"\n[tool] {event.data['tool_name']}")
 
-# Transactions
-for txn in client.transactions.list(limit=20):
+# Transactions — list endpoints are paginated; a Page is iterable and sized.
+page = client.transactions.list(per_page=20)
+print(f"showing {len(page)} of {page.total} transactions (page {page.page})")
+for txn in page:
     print(txn.date, txn.amount, txn.currency, txn.creditor, txn.status)
+
+# Payment intents — what the agent proposed, with per-leg execution detail.
+for intent in client.payment_intents.list(per_page=20):
+    print(intent.created_at, intent.total_amount, intent.currency, intent.approval_status)
 
 client.close()
 ```
@@ -105,7 +111,8 @@ There is no `payments.create()` method by design. Payments are executed by the
 **agent**, not by direct REST calls: drive the agent with `chat.send` /
 `chat.stream` ("Pay £500 to Bob for the April invoice") and it will create the
 payment, subject to its spend limits and approval rules. Use
-`transactions.list` to read what the agent did.
+`transactions.list` (executed payments) and `payment_intents.list` (what the
+agent proposed, with per-leg status) to read what the agent did.
 
 ## Errors
 
