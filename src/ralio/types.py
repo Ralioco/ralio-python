@@ -14,10 +14,12 @@ from typing import Any, Generic, TypeVar
 @dataclass(frozen=True)
 class CredentialBinding:
     """The result of a completed registration. ``client_id`` is the ``cb_…``
-    handle used to mint tokens; the private key lives on disk."""
+    handle used to mint tokens; the private key lives on disk at
+    ``key_path``."""
 
     client_id: str
     scopes: tuple[str, ...]
+    key_path: str = ""
 
 
 @dataclass(frozen=True)

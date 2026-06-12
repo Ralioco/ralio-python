@@ -34,44 +34,65 @@ key that lives on exactly one host:
 
 1. The **owner** mints a one-time registration ticket in the console
    (**Settings → Credentials → New credential**), choosing the target agent and
-   a scope ceiling. They send you the `ralio-reg-…` ticket.
-2. You call `ralio.register(...)` on the agent host. It generates a keypair
-   locally, submits the public key, and blocks until the owner approves the
-   binding in the console. You get back a `client_id` (`cb_…`).
+   a scope ceiling. That is where consent happens. They send you the
+   `ralio-reg-…` ticket.
+2. You call `ralio.register()` once on the agent host. It generates a keypair
+   locally and submits the public key with the ticket; the binding is active
+   as soon as the server responds — no approval step, no polling. The owner
+   gets an email receipt with a revoke link. The credentials are persisted to
+   `~/.ralio/` — the same store the `ralio` CLI uses, so `register()` and
+   `ralio auth agent` are interchangeable.
 3. From then on, `RalioClient` mints and refreshes DPoP-bound access tokens
    transparently and signs a fresh proof for every request.
 
 See the [API authentication guide](https://docs.ralio.co/api-reference/authentication)
 for the protocol details.
 
-## Register once
+## Quickstart
 
-Run this on the host where the integration will live, after the owner sends you
-a ticket:
+With the owner's ticket in `RALIO_REGISTRATION_TICKET`, onboarding is two
+calls:
+
+```python
+import ralio
+
+ralio.register()  # run once; the binding is active when this returns
+
+client = ralio.RalioClient()  # zero-config: reads the persisted credentials
+reply = client.chat.send(message="What is my current balance?")
+```
+
+`register()` activates the binding in a single call (or raises
+`RalioRegistrationError` if the ticket is invalid, expired, or already
+consumed). The private key is generated locally, written to
+`~/.ralio/keys/<jkt>.pem`, and never leaves the host.
+
+Everything is overridable when you want to manage credentials yourself:
 
 ```python
 import ralio
 
 binding = ralio.register(
-    ticket="ralio-reg-...",
+    ticket="ralio-reg-...",                      # instead of RALIO_REGISTRATION_TICKET
     private_key_path="ralio-key.pem",            # generated and written here
     requested_scopes=["agents:execute", "transactions:read"],
 )
 print(binding.client_id)   # cb_... — store this alongside the key
 ```
 
-`register()` blocks until the owner approves (or the binding is rejected /
-expires / times out). The private key never leaves the host.
-
 ## Use the client
 
 ```python
 import ralio
 
-client = ralio.RalioClient(
-    client_id="cb_...",
-    private_key_path="ralio-key.pem",
-)
+# Zero-config: reads the credentials persisted by register() / `ralio auth agent`.
+client = ralio.RalioClient()
+
+# Or manage credentials yourself:
+# client = ralio.RalioClient(
+#     client_id="cb_...",
+#     private_key_path="ralio-key.pem",
+# )
 
 # Synchronous chat — agent_id is resolved automatically for a single-agent
 # credential; pass agent_id explicitly to target one of several agents.
@@ -101,9 +122,17 @@ client.close()
 `RalioClient` is also a context manager:
 
 ```python
-with ralio.RalioClient(client_id="cb_...", private_key_path="ralio-key.pem") as client:
+with ralio.RalioClient() as client:
     ...
 ```
+
+## Environment variables
+
+| Variable                    | Meaning                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| `RALIO_REGISTRATION_TICKET` | Default ticket for `register()` — same variable the CLI reads        |
+| `RALIO_API_URL`             | API origin (default `https://api.ralio.co`)                          |
+| `RALIO_CONFIG_DIR`          | Credential store location (default `~/.ralio`, shared with the CLI)  |
 
 ## Payments
 
@@ -126,7 +155,7 @@ All errors subclass `ralio.RalioError`:
 | `RalioValidationError` (422) | Invalid field values or business-rule violation |
 | `RalioRateLimitError` (429) | Rate limited — back off and retry |
 | `RalioAPIError` | Any other HTTP error (carries `status_code`, `detail`) |
-| `RalioRegistrationError` | Registration rejected, expired, or timed out |
+| `RalioRegistrationError` | Registration failed (invalid / expired / consumed ticket) |
 | `RalioConfigError` | Local configuration problem |
 
 ```python

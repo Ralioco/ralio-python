@@ -16,7 +16,9 @@ class RalioConfigError(RalioError):
 
 
 class RalioRegistrationError(RalioError):
-    """A credential-binding registration was rejected, expired, or timed out."""
+    """A credential-binding registration failed — the ticket was invalid,
+    expired, or already consumed, the public key was unusable, or the
+    server's response didn't match the local key."""
 
 
 class RalioAPIError(RalioError):

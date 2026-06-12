@@ -1,52 +1,47 @@
 """End-to-end example: register once, then chat and read transactions.
 
 Run the registration step on the host where the agent will live, after the
-owner mints a ticket in the console (Settings -> Credentials -> New credential).
+owner mints a ticket in the console (Settings -> Credentials -> New credential)
+and you export it as RALIO_REGISTRATION_TICKET:
+
+    RALIO_REGISTRATION_TICKET=ralio-reg-... python examples/quickstart.py register
+    python examples/quickstart.py
 """
 
-import os
+import sys
 
 import ralio
 
-KEY_PATH = "ralio-key.pem"
-AGENT_ID = os.environ["RALIO_AGENT_ID"]
 
-
-def register_once() -> str:
-    """Run this once. Blocks until the owner approves in the console."""
-    binding = ralio.register(
-        ticket=os.environ["RALIO_TICKET"],
-        private_key_path=KEY_PATH,
-        requested_scopes=["agents:execute", "transactions:read"],
-    )
-    print("client_id:", binding.client_id)  # persist this
-    return binding.client_id
+def register_once() -> None:
+    """Run this once. The binding is active as soon as the call returns (the
+    owner consented by minting the ticket and gets an email receipt with a
+    revoke link); the credentials are persisted to ~/.ralio/ so the client
+    needs no arguments."""
+    binding = ralio.register()  # ticket from RALIO_REGISTRATION_TICKET
+    print("registered:", binding.client_id, "key at", binding.key_path)
 
 
 def main() -> None:
-    client = ralio.RalioClient(
-        client_id=os.environ["RALIO_CLIENT_ID"],
-        private_key_path=KEY_PATH,
-    )
+    # Zero-config: reads the persisted credentials. agent_id is resolved
+    # automatically for a single-agent credential.
+    with ralio.RalioClient() as client:
+        reply = client.chat.send(message="What is my current balance?")
+        print("reply:", reply.reply)
 
-    reply = client.chat.send(agent_id=AGENT_ID, message="What is my current balance?")
-    print("reply:", reply.reply)
+        print("--- streaming ---")
+        for event in client.chat.stream(message="List my recent payments"):
+            if event.event == "text_delta":
+                print(event.text, end="", flush=True)
+            elif event.event == "tool_started":
+                print(f"\n[tool] {event.data.get('tool_name')}")
+        print()
 
-    print("--- streaming ---")
-    for event in client.chat.stream(agent_id=AGENT_ID, message="List my recent payments"):
-        if event.event == "text_delta":
-            print(event.text, end="", flush=True)
-        elif event.event == "tool_started":
-            print(f"\n[tool] {event.data.get('tool_name')}")
-    print()
-
-    page = client.transactions.list(per_page=10)
-    print(f"{len(page)} of {page.total} transactions")
-    for txn in page:
-        print(f"{txn.date}  {txn.amount} {txn.currency}  -> {txn.creditor}  ({txn.status})")
-
-    client.close()
+        page = client.transactions.list(per_page=10)
+        print(f"{len(page)} of {page.total} transactions")
+        for txn in page:
+            print(f"{txn.date}  {txn.amount} {txn.currency}  -> {txn.creditor}  ({txn.status})")
 
 
 if __name__ == "__main__":
-    main()
+    register_once() if sys.argv[1:] == ["register"] else main()
