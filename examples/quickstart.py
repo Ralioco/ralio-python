@@ -40,7 +40,9 @@ def main() -> None:
             print(f"\n[tool] {event.data.get('tool_name')}")
     print()
 
-    for txn in client.transactions.list(limit=10):
+    page = client.transactions.list(per_page=10)
+    print(f"{len(page)} of {page.total} transactions")
+    for txn in page:
         print(f"{txn.date}  {txn.amount} {txn.currency}  -> {txn.creditor}  ({txn.status})")
 
     client.close()
