@@ -1,43 +1,173 @@
 name: Release
 
-# Publishes to PyPI via Trusted Publishing (OIDC) when a version tag is pushed.
+# Publishes to PyPI via Trusted Publishing (OIDC) from a manual release run.
+# The workflow increments the patch version by default, or uses the provided
+# release tag/version for minor and major releases. It commits the version bump,
+# creates the tag, and publishes the package.
 # No API token is stored — PyPI verifies the workflow identity directly.
 # One-time setup: add this repo + workflow as a trusted publisher for the
 # `ralio` project at https://pypi.org/manage/account/publishing/.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional release tag/version, e.g. v0.2.0 or 0.2.0. Leave blank to increment patch."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - run: python -m pip install --upgrade pip build twine
-      - run: python -m build
-      - run: twine check dist/*
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-
   publish:
-    needs: build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: write
       id-token: write  # required for Trusted Publishing
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Require main branch
+        if: github.ref_name != 'main'
+        run: |
+          echo "Release workflow must be run from main; selected ${GITHUB_REF_NAME}."
+          exit 1
+      - uses: actions/checkout@v6
         with:
-          name: dist
-          path: dist/
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Resolve release version
+        id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          pyproject = pathlib.Path("pyproject.toml")
+          text = pyproject.read_text()
+          current_match = re.search(
+              r'(?m)^version = "([0-9]+)\.([0-9]+)\.([0-9]+)"$',
+              text,
+          )
+          if not current_match:
+              print("Could not find a semantic version in pyproject.toml", file=sys.stderr)
+              sys.exit(1)
+
+          subprocess.run(["git", "fetch", "--tags", "origin"], check=True)
+
+          current = tuple(int(part) for part in current_match.groups())
+          requested = os.environ.get("REQUESTED_TAG", "").strip()
+          if requested.startswith("v"):
+              requested = requested[1:]
+
+          if requested:
+              requested_match = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", requested)
+              if not requested_match:
+                  print("Release tag/version must look like v1.2.3 or 1.2.3", file=sys.stderr)
+                  sys.exit(1)
+              version_parts = tuple(int(part) for part in requested_match.groups())
+          else:
+              major, minor, patch = current
+              version_parts = (major, minor, patch + 1)
+
+          if version_parts < current:
+              current_version = ".".join(str(part) for part in current)
+              requested_version = ".".join(str(part) for part in version_parts)
+              print(
+                  f"Release version {requested_version} must not be lower than {current_version}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          version = ".".join(str(part) for part in version_parts)
+          tag = f"v{version}"
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          tag_commit = subprocess.run(
+              ["git", "rev-list", "-n", "1", tag],
+              capture_output=True,
+              text=True,
+          )
+          if tag_commit.returncode == 0:
+              tag_exists = True
+              tag_target = tag_commit.stdout.strip()
+          else:
+              tag_exists = False
+              tag_target = None
+
+          remote_tag = subprocess.run(
+              ["git", "ls-remote", "--exit-code", "--tags", "origin", f"refs/tags/{tag}"],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          )
+          if remote_tag.returncode == 0:
+              tag_exists = True
+          if remote_tag.returncode not in {0, 2}:
+              print(f"Could not check whether tag {tag} exists on origin", file=sys.stderr)
+              sys.exit(remote_tag.returncode)
+
+          commit_needed = version_parts != current
+          if tag_exists:
+              if tag_target is None:
+                  print(f"Tag {tag} exists on origin but was not fetched", file=sys.stderr)
+                  sys.exit(1)
+              if tag_target != head:
+                  print(f"Tag {tag} already exists on a different commit", file=sys.stderr)
+                  sys.exit(1)
+              if commit_needed:
+                  print(f"Tag {tag} already exists; cannot move it to a new commit", file=sys.stderr)
+                  sys.exit(1)
+
+          if commit_needed:
+              updated = re.sub(
+                  r'(?m)^version = "[^"]+"$',
+                  f'version = "{version}"',
+                  text,
+                  count=1,
+              )
+              pyproject.write_text(updated)
+
+          tag_needed = not tag_exists
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"version={version}", file=output)
+              print(f"tag={tag}", file=output)
+              print(f"commit_needed={str(commit_needed).lower()}", file=output)
+              print(f"tag_needed={str(tag_needed).lower()}", file=output)
+          PY
+      - run: python -m pip install --upgrade pip build twine
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy
+      - run: pytest -q
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Commit release version
+        if: steps.release.outputs.commit_needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "release: ${{ steps.release.outputs.version }}"
+      - name: Create release tag
+        if: steps.release.outputs.tag_needed == 'true'
+        run: |
+          git tag "${{ steps.release.outputs.tag }}"
+      - name: Push release refs
+        if: steps.release.outputs.commit_needed == 'true' || steps.release.outputs.tag_needed == 'true'
+        run: |
+          if [ "${{ steps.release.outputs.commit_needed }}" = "true" ]; then
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+          if [ "${{ steps.release.outputs.tag_needed }}" = "true" ]; then
+            git push origin "${{ steps.release.outputs.tag }}"
+          fi
       - uses: pypa/gh-action-pypi-publish@release/v1
