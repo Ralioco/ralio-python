@@ -13,8 +13,9 @@ It handles the machine-authentication path end to end — OAuth 2.1
 your integration can talk to an agent without hand-rolling JWT signing, proof
 generation, or token refresh.
 
-> **Scope.** This SDK targets autonomous integrations (CI jobs, agent hosts,
-> server-side callers). It authenticates as a **credential binding**, which can
+> **Scope.** This SDK targets autonomous integrations such as agent hosts,
+> backend services, and other server-side automation. It authenticates as a
+> **credential binding**, which can
 > hold the `agents:execute` and `transactions:read` scopes. Agent and binding
 > management (`agents:config`) is a human-only operation in the console and is
 > intentionally not part of this SDK.
@@ -94,8 +95,7 @@ client = ralio.RalioClient()
 #     private_key_path="ralio-key.pem",
 # )
 
-# Synchronous chat — agent_id is resolved automatically for a single-agent
-# credential; pass agent_id explicitly to target one of several agents.
+# Synchronous chat uses the agent selected when this credential was registered.
 reply = client.chat.send(message="What is my current balance?")
 print(reply.reply)
 
@@ -162,10 +162,13 @@ All errors subclass `ralio.RalioError`:
 import ralio
 
 try:
-    client.chat.send(agent_id="...", message="...")
+    client.chat.send(message="...")
 except ralio.RalioPermissionError as exc:
     print("scope problem:", exc.detail)
 ```
+
+The target agent is fixed by the authenticated credential. To use a different
+agent, register or authenticate a new credential for that agent.
 
 ## Development
 
