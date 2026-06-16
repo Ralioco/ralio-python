@@ -171,8 +171,8 @@ def _missing_credentials_message(store: CredentialStore) -> str:
     if isinstance(store, LocalCredentialStore):
         return (
             f"No Ralio credentials found at {store.credentials_path}. Run "
-            "ralio.register() (or `ralio auth agent`) on this host first, or "
-            "pass client_id and private_key_path explicitly."
+            "ralio.register() on this host first, or pass client_id and "
+            "private_key_path explicitly."
         )
     return (
         "credential_store.load_credentials() must return client_id and private "

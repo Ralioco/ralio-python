@@ -41,8 +41,7 @@ key that lives on exactly one host:
    locally and submits the public key with the ticket; the binding is active
    as soon as the server responds — no approval step, no polling. The owner
    gets an email receipt with a revoke link. The credentials are persisted to
-   `~/.ralio/` — the same store the `ralio` CLI uses, so `register()` and
-   `ralio auth agent` are interchangeable.
+   `~/.ralio/` so `RalioClient()` can use them without further configuration.
 3. From then on, `RalioClient` mints and refreshes DPoP-bound access tokens
    transparently and signs a fresh proof for every request.
 
@@ -89,7 +88,7 @@ see [Credential stores and clustered clients](docs/credential-stores.md).
 ```python
 import ralio
 
-# Zero-config: reads the credentials persisted by register() / `ralio auth agent`.
+# Zero-config: reads the credentials persisted by register().
 client = ralio.RalioClient()
 
 # Or manage credentials yourself:
@@ -133,9 +132,9 @@ with ralio.RalioClient() as client:
 
 | Variable                    | Meaning                                                              |
 | --------------------------- | -------------------------------------------------------------------- |
-| `RALIO_REGISTRATION_TICKET` | Default ticket for `register()` — same variable the CLI reads        |
+| `RALIO_REGISTRATION_TICKET` | Default ticket for `register()`                                     |
 | `RALIO_API_URL`             | API origin (default `https://api.ralio.co`)                          |
-| `RALIO_CONFIG_DIR`          | Credential store location (default `~/.ralio`, shared with the CLI)  |
+| `RALIO_CONFIG_DIR`          | Credential store location (default `~/.ralio`)                       |
 
 ## Payments
 

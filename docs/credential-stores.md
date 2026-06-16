@@ -1,8 +1,8 @@
 # Credential stores and clustered clients
 
 `RalioClient()` works with the local `~/.ralio/credentials.json` written by
-`ralio.register()` or `ralio auth agent`. For non-local storage, provide a
-small credential store implementation.
+`ralio.register()`. For non-local storage, provide a small credential store
+implementation.
 
 The store is responsible for loading stable machine identity material:
 

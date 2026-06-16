@@ -7,8 +7,8 @@ the binding is active as soon as the server responds. The owner gets an email
 receipt with a revoke link. The private key never leaves the host.
 
 On activation the first access token is minted and the credentials are
-persisted to ``~/.ralio/`` (same store as ``ralio auth agent``), so a
-no-argument ``RalioClient()`` works from then on.
+persisted to ``~/.ralio/``, so a no-argument ``RalioClient()`` works from then
+on.
 """
 
 from __future__ import annotations
@@ -51,11 +51,11 @@ def register(
     afterwards.
 
     *ticket* defaults to the ``RALIO_REGISTRATION_TICKET`` environment
-    variable — the same one the CLI reads. *private_key_path* defaults to
-    ``~/.ralio/keys/<jkt>.pem`` inside the shared credential store; set
-    *overwrite* to replace an existing file at an explicit path. Pass
-    *credential_store* to persist the resulting ``client_id``, private key, and
-    initial refresh token outside the default local store.
+    variable. *private_key_path* defaults to ``~/.ralio/keys/<jkt>.pem`` inside
+    the shared credential store; set *overwrite* to replace an existing file at
+    an explicit path. Pass *credential_store* to persist the resulting
+    ``client_id``, private key, and initial refresh token outside the default
+    local store.
 
     Raises :class:`RalioRegistrationError` when the ticket is invalid,
     expired, or already consumed, or the public key is unusable.

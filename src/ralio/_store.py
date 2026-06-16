@@ -1,8 +1,7 @@
-"""On-disk credential store, shared with the Ralio CLI.
+"""On-disk credential store for zero-config SDK clients.
 
-The layout mirrors the CLI byte-for-byte so :func:`ralio.register` and
-``ralio auth agent`` are interchangeable — either one can write the
-credentials and the other (or :class:`ralio.RalioClient`) can consume them:
+The layout is written by :func:`ralio.register` and consumed by
+:class:`ralio.RalioClient`:
 
 - ``~/.ralio/credentials.json`` (0600) — ``client_id``, ``key_jkt``, tokens.
 - ``~/.ralio/keys/<jkt>.pem``   (0600) — the P-256 private key, PKCS8 PEM,
@@ -45,7 +44,7 @@ def key_path_for(jkt: str) -> Path:
 
 
 def save_credentials(creds: dict[str, Any]) -> None:
-    """Persist *creds* at the CLI-compatible credentials path, mode 0600, atomically."""
+    """Persist *creds* at the local credentials path, mode 0600, atomically."""
     _ensure_secret_dir(config_dir())
     _write_secret_file(credentials_path(), json.dumps(creds, indent=2) + "\n")
 

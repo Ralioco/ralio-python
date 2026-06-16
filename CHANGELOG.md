@@ -15,18 +15,17 @@ Initial release.
 - Zero-config onboarding, in lockstep with the Node SDK
   (Ralioco/ralio-node#15): `register()` defaults its ticket to
   `RALIO_REGISTRATION_TICKET`, mints the first access token, and persists
-  credentials to `~/.ralio/` (the CLI's store, so `register()` and
-  `ralio auth agent` are interchangeable; private key at
-  `~/.ralio/keys/<jkt>.pem`, `private_key_path` overrides). `RalioClient()`
-  then constructs with no arguments. Env overrides: `RALIO_API_URL`,
-  `RALIO_CONFIG_DIR`. `CredentialBinding` gained `key_path`; `scopes` now
-  reflects the granted token scope.
+  credentials to `~/.ralio/` (private key at `~/.ralio/keys/<jkt>.pem`,
+  `private_key_path` overrides). `RalioClient()` then constructs with no
+  arguments. Env overrides: `RALIO_API_URL`, `RALIO_CONFIG_DIR`.
+  `CredentialBinding` gained `key_path`; `scopes` now reflects the granted
+  token scope.
 - Pluggable SDK credential stores for the multiple-refresh-token-family model
   (server PR agentic-payment-gateway#1244): callers can provide
   `credential_store=` to source `client_id` plus private key/JWK from custom
   stores and persist refresh-token rotation per SDK instance. The default
-  local store remains CLI-compatible while avoiding accidental shared mutable
-  refresh-token state for concurrent clients.
+  local store keeps the existing file format while avoiding accidental shared
+  mutable refresh-token state for concurrent clients.
 - `client.chat.send` and `client.chat.stream` (SSE). `agent_id` is optional —
   when omitted, the SDK resolves the single agent the credential is bound to
   (via `client.agents.list()`) and caches it.

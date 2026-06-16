@@ -61,7 +61,7 @@ class CredentialStore(Protocol):
 
 
 class LocalCredentialStore:
-    """CLI-compatible local credential store.
+    """Local file-backed credential store.
 
     Stable identity is read from and written to ``credentials.json`` under the
     Ralio config directory. Refresh tokens are instance-local by default:
@@ -91,7 +91,7 @@ class LocalCredentialStore:
 
     @property
     def credentials_path(self) -> Path:
-        """Path to the CLI-compatible ``credentials.json`` file."""
+        """Path to the local ``credentials.json`` file."""
         return self._credentials_path
 
     def key_path_for(self, jkt: str) -> Path:
