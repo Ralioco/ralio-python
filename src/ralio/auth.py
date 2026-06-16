@@ -19,6 +19,7 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 from . import _crypto
+from .credentials import CredentialStore
 from .errors import raise_for_response
 
 
@@ -32,6 +33,8 @@ class TokenManager:
         token_url: str,
         http: httpx.Client,
         scopes: tuple[str, ...] | None = None,
+        refresh_token: str | None = None,
+        credential_store: CredentialStore | None = None,
         refresh_leeway_seconds: float = 300.0,
     ) -> None:
         self._client_id = client_id
@@ -40,11 +43,12 @@ class TokenManager:
         self._token_url = token_url
         self._http = http
         self._scopes = scopes
+        self._credential_store = credential_store
         self._leeway = refresh_leeway_seconds
 
         self._lock = threading.Lock()
         self._access_token: str | None = None
-        self._refresh_token: str | None = None
+        self._refresh_token = refresh_token
         self._expires_at = 0.0
 
     def access_token(self) -> str:
@@ -106,6 +110,10 @@ class TokenManager:
         raise_for_response(response)
         body = response.json()
         self._access_token = body["access_token"]
-        self._refresh_token = body.get("refresh_token") or self._refresh_token
+        refresh_token = body.get("refresh_token")
+        if isinstance(refresh_token, str) and refresh_token:
+            self._refresh_token = refresh_token
+            if self._credential_store is not None:
+                self._credential_store.save_refresh_token(refresh_token)
         self._expires_at = time.time() + float(body.get("expires_in", 1800))
         return self._access_token

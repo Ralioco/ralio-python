@@ -21,6 +21,12 @@ Initial release.
   then constructs with no arguments. Env overrides: `RALIO_API_URL`,
   `RALIO_CONFIG_DIR`. `CredentialBinding` gained `key_path`; `scopes` now
   reflects the granted token scope.
+- Pluggable SDK credential stores for the multiple-refresh-token-family model
+  (server PR agentic-payment-gateway#1244): callers can provide
+  `credential_store=` to source `client_id` plus private key/JWK from custom
+  stores and persist refresh-token rotation per SDK instance. The default
+  local store remains CLI-compatible while avoiding accidental shared mutable
+  refresh-token state for concurrent clients.
 - `client.chat.send` and `client.chat.stream` (SSE). `agent_id` is optional —
   when omitted, the SDK resolves the single agent the credential is bound to
   (via `client.agents.list()`) and caches it.

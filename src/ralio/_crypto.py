@@ -19,6 +19,7 @@ import os
 import secrets
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,14 @@ def public_jwk(private_key: EllipticCurvePrivateKey) -> dict[str, str]:
     }
 
 
+def private_jwk(private_key: EllipticCurvePrivateKey) -> dict[str, str]:
+    """Return the private P-256 JWK for *private_key*."""
+    numbers = private_key.private_numbers()
+    jwk = public_jwk(private_key)
+    jwk["d"] = b64url(numbers.private_value.to_bytes(32, "big"))
+    return jwk
+
+
 def jwk_thumbprint(canonical_jwk: dict[str, str]) -> str:
     """RFC 7638 thumbprint of a canonical JWK — used as ``kid`` and key id."""
     canonical_json = json.dumps(canonical_jwk, separators=(",", ":"), sort_keys=True)
@@ -91,10 +100,31 @@ def save_private_key(path: str | Path, private_key: EllipticCurvePrivateKey) -> 
 
 def load_private_key(path: str | Path) -> EllipticCurvePrivateKey:
     """Load a PKCS8 PEM P-256 private key from *path*."""
-    key = serialization.load_pem_private_key(Path(path).read_bytes(), password=None)
+    return load_private_key_pem(Path(path).read_bytes())
+
+
+def load_private_key_pem(data: str | bytes) -> EllipticCurvePrivateKey:
+    """Load a PKCS8 PEM P-256 private key from bytes or text."""
+    raw = data.encode("utf-8") if isinstance(data, str) else data
+    key = serialization.load_pem_private_key(raw, password=None)
     if not isinstance(key, EllipticCurvePrivateKey):
         raise ValueError("Ralio credentials require a P-256 (EC) private key")
     return key
+
+
+def load_private_key_jwk(jwk: Mapping[str, str]) -> EllipticCurvePrivateKey:
+    """Load a private P-256 key from an EC JWK with ``d``/``x``/``y`` members."""
+    if jwk.get("kty") != "EC" or jwk.get("crv") != "P-256":
+        raise ValueError("Ralio private JWKs must be P-256 EC keys")
+    try:
+        d = int.from_bytes(_b64url_decode(jwk["d"]), "big")
+        x = int.from_bytes(_b64url_decode(jwk["x"]), "big")
+        y = int.from_bytes(_b64url_decode(jwk["y"]), "big")
+    except KeyError as exc:
+        raise ValueError(f"Ralio private JWK is missing {exc.args[0]!r}") from None
+    public_numbers = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+    private_numbers = ec.EllipticCurvePrivateNumbers(d, public_numbers)
+    return private_numbers.private_key()
 
 
 def sign_client_assertion(
@@ -159,3 +189,8 @@ def _pem(private_key: EllipticCurvePrivateKey) -> bytes:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * ((4 - len(value) % 4) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))

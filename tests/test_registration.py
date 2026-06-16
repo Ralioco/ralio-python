@@ -7,6 +7,7 @@ import respx
 
 import ralio
 from ralio import _store
+from ralio.credentials import StoredCredentials
 from ralio.errors import RalioConfigError, RalioRegistrationError
 
 BASE_URL = "https://api.ralio.co"
@@ -22,6 +23,22 @@ def mock_activated_registration(token_response, client_id="cb_new"):
 
 def stored_credentials():
     return json.loads(_store.credentials_path().read_text())
+
+
+class CaptureCredentialStore:
+    def __init__(self):
+        self.saved_credentials: StoredCredentials | None = None
+        self.refresh_token: str | None = None
+
+    def load_credentials(self) -> StoredCredentials | None:
+        return self.saved_credentials
+
+    def save_credentials(self, credentials: StoredCredentials) -> None:
+        self.saved_credentials = credentials
+        self.refresh_token = credentials.refresh_token
+
+    def save_refresh_token(self, refresh_token: str) -> None:
+        self.refresh_token = refresh_token
 
 
 @respx.mock
@@ -81,6 +98,28 @@ def test_register_env_ticket_and_default_key_path(config_dir, monkeypatch, token
 
     submitted = json.loads(respx.calls[0].request.content)
     assert submitted["ticket"] == "ralio-reg-env"
+
+
+@respx.mock
+def test_register_can_persist_to_custom_credential_store(config_dir, token_response):
+    mock_activated_registration(token_response)
+    store = CaptureCredentialStore()
+
+    binding = ralio.register(
+        ticket="ralio-reg-x",
+        base_url=BASE_URL,
+        credential_store=store,
+    )
+
+    assert binding.client_id == "cb_new"
+    assert binding.key_path == ""
+    assert store.saved_credentials is not None
+    assert store.saved_credentials.client_id == "cb_new"
+    assert store.saved_credentials.private_key is not None
+    assert store.saved_credentials.public_jwk is not None
+    assert store.saved_credentials.key_jkt
+    assert store.refresh_token == "rrt-1"
+    assert _store.load_credentials() is None
 
 
 def test_register_missing_ticket(config_dir):
