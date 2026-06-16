@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
@@ -10,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 from . import _crypto, _store
 from .auth import TokenManager
+from .credentials import CredentialStore, LocalCredentialStore, StoredCredentials
 from .errors import RalioConfigError
 from .resources import (
     AgentsResource,
@@ -31,7 +33,7 @@ class RalioClient:
         reply = client.chat.send(message="What's my balance?")
 
     To manage credentials yourself, pass ``client_id`` and
-    ``private_key_path`` together.
+    ``private_key_path`` together, or provide a ``credential_store``.
     """
 
     def __init__(
@@ -41,11 +43,12 @@ class RalioClient:
         private_key_path: str | Path | None = None,
         base_url: str | None = None,
         scopes: list[str] | None = None,
+        credential_store: CredentialStore | None = None,
         timeout: float = 30.0,
     ) -> None:
         self._base_url = _store.resolve_base_url(base_url)
-        client_id, key_path = _resolve_credentials(client_id, private_key_path)
-        private_key = _load_private_key(key_path)
+        resolved = _resolve_credentials(client_id, private_key_path, credential_store)
+        private_key = resolved.private_key
         public_jwk = _crypto.public_jwk(private_key)
         kid = _crypto.jwk_thumbprint(public_jwk)
 
@@ -54,12 +57,14 @@ class RalioClient:
             timeout=httpx.Timeout(timeout, read=None),
         )
         tokens = TokenManager(
-            client_id=client_id,
+            client_id=resolved.client_id,
             private_key=private_key,
             kid=kid,
             token_url=f"{self._base_url}/oauth/token",
             http=self._http,
             scopes=tuple(scopes) if scopes else None,
+            refresh_token=resolved.refresh_token,
+            credential_store=resolved.credential_store,
         )
         transport = Transport(
             base_url=self._base_url,
@@ -89,35 +94,48 @@ class RalioClient:
         self.close()
 
 
+@dataclass(frozen=True)
+class _ResolvedCredentials:
+    client_id: str
+    private_key: EllipticCurvePrivateKey
+    refresh_token: str | None
+    credential_store: CredentialStore | None
+
+
 def _resolve_credentials(
     client_id: str | None,
     private_key_path: str | Path | None,
-) -> tuple[str, Path]:
-    """Resolve the binding handle and key path, falling back to the store."""
+    credential_store: CredentialStore | None,
+) -> _ResolvedCredentials:
+    """Resolve the binding handle and key material, falling back to the store."""
     if client_id and private_key_path:
-        return client_id, Path(private_key_path)
+        refresh_token = None
+        if credential_store is not None:
+            stored = credential_store.load_credentials()
+            refresh_token = stored.refresh_token if stored is not None else None
+        return _ResolvedCredentials(
+            client_id=client_id,
+            private_key=_load_private_key(Path(private_key_path)),
+            refresh_token=refresh_token,
+            credential_store=credential_store,
+        )
     if client_id or private_key_path:
         raise RalioConfigError(
             "client_id and private_key_path must be passed together; omit both "
-            "to use the credentials persisted by ralio.register()."
+            "to use a credential_store or the credentials persisted by ralio.register()."
         )
 
-    stored = _store.load_credentials() or {}
-    stored_client_id = stored.get("client_id")
-    stored_key_path = stored.get("key_path")
-    stored_jkt = stored.get("key_jkt")
-    key_path: Path | None = None
-    if isinstance(stored_key_path, str) and stored_key_path:
-        key_path = Path(stored_key_path)
-    elif isinstance(stored_jkt, str) and stored_jkt:
-        key_path = _store.key_path_for(stored_jkt)
-    if not isinstance(stored_client_id, str) or not stored_client_id or key_path is None:
-        raise RalioConfigError(
-            f"No Ralio credentials found at {_store.credentials_path()}. Run "
-            "ralio.register() (or `ralio auth agent`) on this host first, or "
-            "pass client_id and private_key_path explicitly."
-        )
-    return stored_client_id, key_path
+    store = credential_store or LocalCredentialStore()
+    stored = store.load_credentials()
+    if stored is None or not stored.client_id:
+        raise RalioConfigError(_missing_credentials_message(store))
+    private_key = _load_private_key_from_stored(stored, store)
+    return _ResolvedCredentials(
+        client_id=stored.client_id,
+        private_key=private_key,
+        refresh_token=stored.refresh_token,
+        credential_store=store,
+    )
 
 
 def _load_private_key(key_path: Path) -> EllipticCurvePrivateKey:
@@ -129,3 +147,34 @@ def _load_private_key(key_path: Path) -> EllipticCurvePrivateKey:
             "revoked and the key removed. Re-run ralio.register() with a "
             "fresh ticket."
         ) from None
+
+
+def _load_private_key_from_stored(
+    stored: StoredCredentials,
+    store: CredentialStore,
+) -> EllipticCurvePrivateKey:
+    try:
+        if stored.private_key is not None:
+            return stored.private_key
+        if stored.private_key_pem is not None:
+            return _crypto.load_private_key_pem(stored.private_key_pem)
+        if stored.private_jwk is not None:
+            return _crypto.load_private_key_jwk(stored.private_jwk)
+        if stored.private_key_path:
+            return _load_private_key(Path(stored.private_key_path))
+    except ValueError as exc:
+        raise RalioConfigError(f"Invalid Ralio private key material: {exc}") from None
+    raise RalioConfigError(_missing_credentials_message(store))
+
+
+def _missing_credentials_message(store: CredentialStore) -> str:
+    if isinstance(store, LocalCredentialStore):
+        return (
+            f"No Ralio credentials found at {store.credentials_path}. Run "
+            "ralio.register() on this host first, or pass client_id and "
+            "private_key_path explicitly."
+        )
+    return (
+        "credential_store.load_credentials() must return client_id and private "
+        "key material for RalioClient."
+    )

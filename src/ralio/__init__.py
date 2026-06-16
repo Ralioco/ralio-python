@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from .client import RalioClient
+from .credentials import CredentialStore, LocalCredentialStore, StoredCredentials
 from .errors import (
     RalioAPIError,
     RalioAuthError,
@@ -38,6 +39,9 @@ except PackageNotFoundError:  # running from a source tree without an install
 __all__ = [
     "RalioClient",
     "register",
+    "CredentialStore",
+    "LocalCredentialStore",
+    "StoredCredentials",
     "Agent",
     "ChatReply",
     "ChatStreamEvent",

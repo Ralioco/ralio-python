@@ -7,8 +7,8 @@ the binding is active as soon as the server responds. The owner gets an email
 receipt with a revoke link. The private key never leaves the host.
 
 On activation the first access token is minted and the credentials are
-persisted to ``~/.ralio/`` (same store as ``ralio auth agent``), so a
-no-argument ``RalioClient()`` works from then on.
+persisted to ``~/.ralio/``, so a no-argument ``RalioClient()`` works from then
+on.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 from . import _crypto, _store
 from ._store import DEFAULT_BASE_URL
+from .credentials import CredentialStore, LocalCredentialStore, StoredCredentials
 from .errors import RalioConfigError, RalioRegistrationError, raise_for_response
 from .types import CredentialBinding
 
@@ -36,6 +37,7 @@ def register(
     base_url: str | None = None,
     requested_scopes: list[str] | None = None,
     client_metadata: dict[str, Any] | None = None,
+    credential_store: CredentialStore | None = None,
     overwrite: bool = False,
 ) -> CredentialBinding:
     """Register this host and return the active binding.
@@ -49,9 +51,11 @@ def register(
     afterwards.
 
     *ticket* defaults to the ``RALIO_REGISTRATION_TICKET`` environment
-    variable — the same one the CLI reads. *private_key_path* defaults to
-    ``~/.ralio/keys/<jkt>.pem`` inside the shared credential store; set
-    *overwrite* to replace an existing file at an explicit path.
+    variable. *private_key_path* defaults to ``~/.ralio/keys/<jkt>.pem`` inside
+    the shared credential store; set *overwrite* to replace an existing file at
+    an explicit path. Pass *credential_store* to persist the resulting
+    ``client_id``, private key, and initial refresh token outside the default
+    local store.
 
     Raises :class:`RalioRegistrationError` when the ticket is invalid,
     expired, or already consumed, or the public key is unusable.
@@ -67,18 +71,27 @@ def register(
     private_key, public_jwk = _crypto.generate_keypair()
     fingerprint = _crypto.jwk_thumbprint(public_jwk)
 
+    store = credential_store or LocalCredentialStore()
+    key_path: Path | None = None
+    wrote_local_key = False
+
     if private_key_path is not None:
         key_path = Path(private_key_path)
         if key_path.exists() and not overwrite:
             raise RalioRegistrationError(
                 f"{key_path} already exists; pass overwrite=True to replace it"
             )
+        _crypto.save_private_key(key_path, private_key)
+        wrote_local_key = True
+    elif isinstance(store, LocalCredentialStore):
+        store.ensure_keys_dir()
+        key_path = store.key_path_for(fingerprint)
+        _crypto.save_private_key(key_path, private_key)
+        wrote_local_key = True
     else:
-        # Thumbprint-named keys in the store are unique per keypair, so there
-        # is nothing to clobber.
-        _store.ensure_keys_dir()
-        key_path = _store.key_path_for(fingerprint)
-    _crypto.save_private_key(key_path, private_key)
+        # Custom stores receive the private key only after the server accepts
+        # the registration, so a failed ticket does not leave orphaned secrets.
+        key_path = None
 
     with httpx.Client(timeout=30.0) as http:
         try:
@@ -87,7 +100,8 @@ def register(
             )
         except BaseException:
             # No binding was created — a key bound to nothing is dead weight.
-            _store.delete_private_key(key_path)
+            if wrote_local_key and key_path is not None:
+                _store.delete_private_key(key_path)
             raise
 
         # The server echoes the RFC 7638 thumbprint it computed. A mismatch
@@ -97,7 +111,8 @@ def register(
         server_fingerprint = payload.get("fingerprint")
         client_id = payload.get("client_id")
         if server_fingerprint and server_fingerprint != fingerprint:
-            _store.delete_private_key(key_path)
+            if wrote_local_key and key_path is not None:
+                _store.delete_private_key(key_path)
             handle = f" {client_id}" if isinstance(client_id, str) and client_id else ""
             raise RalioRegistrationError(
                 "fingerprint mismatch between local key and server response: the "
@@ -117,18 +132,22 @@ def register(
 
         token = _mint_first_token(http, base, client_id, private_key, fingerprint)
 
-    _store.save_credentials(
-        {
-            "access_token": token["access_token"],
-            "refresh_token": token.get("refresh_token", ""),
-            "expires_in": token.get("expires_in", 1800),
-            "obtained_at": time.time(),
-            "client_id": client_id,
-            "key_jkt": fingerprint,
-            "key_path": str(key_path),
-            "scope": token.get("scope", ""),
-            "auth_method": "private_key_jwt",
-        }
+    store.save_credentials(
+        StoredCredentials(
+            client_id=client_id,
+            private_key=private_key,
+            private_key_path=key_path,
+            public_jwk=public_jwk,
+            key_jkt=fingerprint,
+            refresh_token=token.get("refresh_token") or None,
+            extra={
+                "access_token": token["access_token"],
+                "expires_in": token.get("expires_in", 1800),
+                "obtained_at": time.time(),
+                "scope": token.get("scope", ""),
+                "auth_method": "private_key_jwt",
+            },
+        )
     )
 
     scope = token.get("scope")
@@ -137,7 +156,7 @@ def register(
         if isinstance(scope, str) and scope
         else tuple(requested_scopes or ())
     )
-    return CredentialBinding(client_id=client_id, scopes=scopes, key_path=str(key_path))
+    return CredentialBinding(client_id=client_id, scopes=scopes, key_path=str(key_path or ""))
 
 
 def _submit(

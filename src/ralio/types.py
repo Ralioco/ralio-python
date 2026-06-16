@@ -14,8 +14,9 @@ from typing import Any, Generic, TypeVar
 @dataclass(frozen=True)
 class CredentialBinding:
     """The result of a completed registration. ``client_id`` is the ``cb_…``
-    handle used to mint tokens; the private key lives on disk at
-    ``key_path``."""
+    handle used to mint tokens. ``key_path`` is set when the private key was
+    written to local disk, and is empty for credential stores that keep the key
+    elsewhere."""
 
     client_id: str
     scopes: tuple[str, ...]
